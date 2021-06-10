@@ -1,6 +1,0 @@
-configuration:
-  ActionMode: CHANGE_SET_REPLACE
-  StackName: my-pipeline-stack
-  KeyName: bastion-test
-  AuroraDBName: appdb
-  OracleDBPassword: oracle
