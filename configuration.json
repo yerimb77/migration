@@ -1,14 +1,14 @@
 {
   "Parameters" : {
-    "KeyName" : "TestEC2Key"
+    "pVPCStack" : "benstack"
   },
   {
-    "StackName" : "dmsstack"
+    " pEC2KeyPair" : "bastion-test"
   },
   {
-    "AuroraDBName" : "Departmentdb"
+    "pOracleDBPassword" : "Departmentdb"
     },
   {
-    "OracleDBPassword" : "oracle"
+   "pAuroraDBName" : "oracledb"
  }
 }
