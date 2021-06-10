@@ -1,5 +1,5 @@
-configuration:
-  ActionMode: CHANGE_SET_REPLACE
-  ChangeSetName: pipeline-changeset
-  RoleArn: arn:aws:iam::057612719437:role/cloudformation-code-role
-  StackName: my-pipeline-stack
+{
+   "Parameters" : {
+     "StackName" : "bensstack"
+  }
+}
