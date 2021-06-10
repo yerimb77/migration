@@ -3,7 +3,7 @@
     "KeyName" : "TestEC2Key"
   },
   {
-  "StackName" : "dmsstack"
+    "StackName" : "dmsstack"
   },
   {
     "AuroraDBName" : "Departmentdb"
