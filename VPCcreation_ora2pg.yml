@@ -1,0 +1,324 @@
+# Copyright 2021 Amazon.com, Inc. or its affiliates. All Rights Reserved. https://aws.amazon.com/agreement
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: Oracle to Aurora Postgres Migration VPC Setup
+
+Parameters:
+  pVpcCIDR:
+    Description: Please enter the IP range (CIDR notation) for this VPC
+    Type: String
+    Default: 10.1.0.0/16
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    
+
+  pPubbastianhostSub1CIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet AZ1
+    Type: String
+    Default: 10.1.10.0/24
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    
+
+  pPrivDBSub1CIDR:
+    Description: Please enter the IP range (CIDR notation) for the private subnet in AZ1
+    Type: String
+    Default: 10.1.11.0/24
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    
+
+  pPrivDBSub2CIDR:
+    Description: Please enter the IP range (CIDR notation) for the private subnet in AZ2
+    Type: String
+    Default: 10.1.12.0/24
+    AllowedPattern: '((\d{1,3})\.){3}\d{1,3}/\d{1,2}'
+    
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Network Configuration
+        Parameters:
+          - pVpcCIDR
+          - pPubbastianhostSub1CIDR
+          - pPrivDBSub1CIDR
+          - pPrivDBSub2CIDR
+
+    ParameterLabels: 
+      pVpcCIDR: 
+        default: "Enter VPC CIDR"
+      pPubbastianhostSub1CIDR:
+        default: "Enter Public bastian host Subnet CIDR"
+      pPrivDBSub1CIDR:
+        default: "Enter Private database Subnet1 CIDR"
+      pPrivDBSub2CIDR:
+        default: "Enter Private database Subnet2 CIDR"
+
+Resources:
+  rVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref pVpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-VPC
+
+  rInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-InternetGW
+
+  rInternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref rInternetGateway
+      VpcId: !Ref rVPC
+
+  rPubbastianhostSub1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref rVPC
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref pPubbastianhostSub1CIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName} Public bastian host Subnet (AZ1)
+
+  rPrivDBSub1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref rVPC
+      AvailabilityZone: !Select [ 0, !GetAZs  '' ]
+      CidrBlock: !Ref pPrivDBSub1CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName} Private database Subnet (AZ1)
+
+  rPrivDBSub2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref rVPC
+      AvailabilityZone: !Select [ 1, !GetAZs  '' ]
+      CidrBlock: !Ref pPrivDBSub2CIDR
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName} Private database Subnet (AZ2)
+
+  rNatGateway1EIP:
+    Type: AWS::EC2::EIP
+    DependsOn: rInternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-NatGatewayEIP
+
+  rNatGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt rNatGateway1EIP.AllocationId
+      SubnetId: !Ref rPubbastianhostSub1
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-NatGateway
+
+  rPubRouteTab:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref rVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName} Public Routes
+
+  rDefaultPublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: rInternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref rPubRouteTab
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref rInternetGateway
+
+  rPubbastianSub1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref rPubRouteTab
+      SubnetId: !Ref rPubbastianhostSub1
+
+  rPrivRouteTab1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref rVPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName} Private Routes (AZ1)
+
+  rDefaultPrivateRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref rPrivRouteTab1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref rNatGateway1
+
+  rBastianSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref rVPC
+      GroupDescription: "Control access to the Bastian Host Server"
+      SecurityGroupIngress: 
+        - Description: "Allow SSH Traffic from Internet"
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-bastian SecurityGroup
+
+  rDBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref rVPC
+      GroupDescription: "Control access to the database Instance"
+      SecurityGroupIngress: 
+        - Description: "Allow Connection to Postgres Instance from bastian Server"
+          IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !GetAtt rBastianSecurityGroup.GroupId
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-DB SecurityGroup
+
+  rPGSelfSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      Description: 'Self Reference'
+      GroupId: !Ref rDBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !GetAtt rDBSecurityGroup.GroupId
+      
+  rDBSubGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: "DB Subnet group for RDS Instances"
+      DBSubnetGroupName: rds-subnet-group
+      SubnetIds:
+        - !Ref rPrivDBSub1
+        - !Ref rPrivDBSub2
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName} DB Subnet Group
+
+  rVPCEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription:  "Security group for VPC Endpoints"
+      VpcId: !Ref rVPC
+      Tags:
+      - Key: Name
+        Value: !Sub '${AWS::StackName}-VPCEndpointSecurityGroup'
+
+  rVPCEndpointSecurityGroupIngress:
+    Type: 'AWS::EC2::SecurityGroupIngress'
+    Properties:
+      GroupId: !Ref rVPCEndpointSecurityGroup
+      IpProtocol: -1
+      SourceSecurityGroupId: !GetAtt 'rVPCEndpointSecurityGroup.GroupId'
+      Description: 'Self Reference'
+
+  rS3VPCEndpoint:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action: '*'
+            Effect: Allow
+            Resource: '*'
+            Principal: '*'
+      RouteTableIds: 
+        - !Ref rPrivRouteTab1
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcId: !Ref rVPC
+
+  rSecretsManagerVPCEndpoint:
+    Type: 'AWS::EC2::VPCEndpoint'
+    Properties:
+      VpcEndpointType: 'Interface'
+      PrivateDnsEnabled: true
+      VpcId: !Ref rVPC
+      SubnetIds: 
+        - !Ref rPubbastianhostSub1
+      SecurityGroupIds: 
+        - !Ref rVPCEndpointSecurityGroup
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.secretsmanager
+
+Outputs:
+  oVPC:
+    Description: A reference to the created VPC
+    Value: !Ref rVPC
+    Export:
+      Name: !Sub "${AWS::StackName}-VPCID"
+
+  oPubbastianSub:
+    Description: Public Subnet for bastian Server
+    Value: !Ref rPubbastianhostSub1
+    Export:
+      Name: !Sub "${AWS::StackName}-PubbastianSub"
+
+  oPrivDBSub1:
+    Description: Private Subnet for DB Server in 1st Availability Zone
+    Value: !Ref rPrivDBSub1
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivDBSub1"
+
+  oPrivDBSub2:
+    Description: Private Subnet for DB Server in 1st Availability Zone
+    Value: !Ref rPrivDBSub2
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivDBSub2"
+
+  oBastianSecurityGroup:
+    Description: Security group to control access to the bastian Server
+    Value: !Ref rBastianSecurityGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-BastianSecurityGroup"
+
+  oDBSecurityGroup:
+    Description: Security group to control access to the DB Server
+    Value: !Ref rDBSecurityGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-DBSecurityGroup"
+
+  oVPCEndpointSecurityGroup:
+    Description: Security group to control access to the VPC Endpoint
+    Value: !Ref rVPCEndpointSecurityGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-VPCEndpointSecurityGroup"
+
+  oDBSubGroup:
+    Description: DB Subnet group for RDS Instances
+    Value: !Ref rDBSubGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-DBSubGroup"
+
+  oPubRouteTab:
+    Description: Public Route Table
+    Value: !Ref rPubRouteTab
+    Export:
+      Name: !Sub "${AWS::StackName}-PubRouteTab"
+
+  oPrivRouteTab1:
+    Description: Private Route Table
+    Value: !Ref rPrivRouteTab1
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivRouteTab1"
+
