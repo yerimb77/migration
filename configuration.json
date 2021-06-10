@@ -2,10 +2,13 @@
   "Parameters" : {
     "KeyName" : "TestEC2Key"
   },
-  {"StackName" : "dmsstack"
+  {
+  "StackName" : "dmsstack"
   },
-  {"AuroraDBName" : "Departmentdb"
+  {
+    "AuroraDBName" : "Departmentdb"
     },
-  {"OracleDBPassword" : "oracle"
+  {
+    "OracleDBPassword" : "oracle"
  }
 }
