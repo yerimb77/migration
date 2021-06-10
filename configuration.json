@@ -1,8 +1,14 @@
 {
    "Parameters" : {
      "StackName" : "bensstack"
-     "KeyName" : "bastion-test"
-     "AuroraDBName" : "appdb"
-     "OracleDBPassword" : "oracle"
   }
+   {
+      "KeyName" : "bastion-test"
+}
+{
+      "AuroraDBName" : "appdb"
+}
+   {
+         "OracleDBPassword" : "oracle"
+}
 }
